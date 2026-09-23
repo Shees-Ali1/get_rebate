@@ -42,9 +42,14 @@ export function resolveUserId(user) {
 
 export function normalizeRole(rawRole) {
   const value = String(rawRole || '').toLowerCase();
+  if (value === 'admin' || value === 'mainadmin') return 'admin';
   if (value === 'agent') return 'agent';
   if (value === 'loanofficer' || value === 'loan_officer' || value === 'loan-officer') {
     return 'loanOfficer';
   }
   return 'buyerSeller';
+}
+
+export function isAdminRole(role) {
+  return normalizeRole(role) === 'admin';
 }
