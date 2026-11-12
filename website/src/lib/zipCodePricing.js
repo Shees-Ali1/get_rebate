@@ -18,6 +18,59 @@ export const MIN_AGENT_PRICE = 7.99;
 export const MIN_LOAN_OFFICER_PRICE = 3.99;
 export const MAX_CLAIMED_ZIPS = 6;
 
+const ACTIVE_SUB_STATUSES = new Set(['active', 'trialing', 'paid']);
+
+function zipFromClaim(z) {
+  return String(z?.zipCode || z?.postalCode || z?.zipcode || '').trim();
+}
+
+function zipFromSub(s) {
+  return String(s?.zipcode || s?.zipCode || s?.postalCode || '').trim();
+}
+
+/**
+ * Merge claimedZipCodes + active subscriptions so Billing and Zip Codes stay in sync.
+ */
+export function buildClaimedRowsFromProfile(profile, fallbackState = '') {
+  const claimedRaw = Array.isArray(profile?.claimedZipCodes)
+    ? profile.claimedZipCodes
+    : (Array.isArray(profile?.zipCodes) ? profile.zipCodes : []);
+  const subscriptions = Array.isArray(profile?.subscriptions) ? profile.subscriptions : [];
+  const byZip = new Map();
+
+  claimedRaw.forEach((z, i) => {
+    const zipcode = zipFromClaim(z);
+    if (!zipcode) return;
+    const matchedSub = subscriptions.find((s) => zipFromSub(s) === zipcode);
+    byZip.set(zipcode, {
+      id: z._id || z.id || `${zipcode}-${i}`,
+      name: zipcode,
+      preview: [z.city, z.state].filter(Boolean).join(', ') || 'Active claim',
+      state: z.state || fallbackState,
+      stripeSubscriptionId: matchedSub?.stripeSubscriptionId || matchedSub?._id || '',
+      source: 'claimed',
+    });
+  });
+
+  subscriptions.forEach((s, i) => {
+    const status = String(s?.subscriptionStatus || '').toLowerCase();
+    if (!ACTIVE_SUB_STATUSES.has(status)) return;
+    const zipcode = zipFromSub(s);
+    if (!zipcode) return;
+    if (byZip.has(zipcode)) return;
+    byZip.set(zipcode, {
+      id: s._id || s.id || `sub-${zipcode}-${i}`,
+      name: zipcode,
+      preview: 'Active subscription (sync pending)',
+      state: s.state || fallbackState,
+      stripeSubscriptionId: s.stripeSubscriptionId || s._id || '',
+      source: 'subscription',
+    });
+  });
+
+  return Array.from(byZip.values());
+}
+
 /** Loan Officer tiers (different from Agent). min 0 so unique/PO Box ZIPs are not $0. */
 const LOAN_OFFICER_TIERS = [
   { min: 0, max: 1001, price: 3.99 },
